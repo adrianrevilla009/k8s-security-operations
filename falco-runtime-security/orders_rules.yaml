@@ -1,0 +1,33 @@
+- macro: container_started
+  condition: evt.type in (execve, execveat) and container.id != host
+
+- macro: open_read_in_container
+  condition: evt.type in (open, openat, openat2) and evt.is_open_read=true and container.id != host
+
+- macro: shell_binaries
+  condition: proc.name in (bash, sh, zsh, dash, ash)
+
+- list: sensitive_files
+  items: [/etc/shadow, /etc/sudoers, /root/.ssh/authorized_keys]
+
+- rule: Shell Spawned in Orders Container
+  desc: An interactive shell started inside a container of the orders namespace
+  condition: >
+    container_started and shell_binaries and proc.tty != 0
+    and k8s.ns.name = orders
+  output: >
+    Shell in orders container (user=%user.name pod=%k8s.pod.name
+    container=%container.name cmdline=%proc.cmdline)
+  priority: WARNING
+  tags: [container, shell, mitre_execution]
+
+- rule: Read Sensitive File in Orders Container
+  desc: A process opened a sensitive file for reading inside the orders namespace
+  condition: >
+    open_read_in_container and fd.name in (sensitive_files)
+    and k8s.ns.name = orders
+  output: >
+    Sensitive file read (file=%fd.name user=%user.name pod=%k8s.pod.name
+    proc=%proc.name)
+  priority: CRITICAL
+  tags: [container, filesystem, mitre_credential_access]
